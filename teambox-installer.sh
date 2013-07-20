@@ -28,12 +28,12 @@ Routes==1.10.3 \
 setuptools==0.6c9 \
 Shabti==0.3.2b \
 simplejson==2.0.8 \
-SQLAchemy==0.5.5 \
 Tempita==0.2 \
 WebError==0.10.1 \
 WebHelpers==0.6.4 \
 WebOb==0.9.6.1 \
 WebTest==1.1 \
+SQLAchemy==0.5.5 \
 psycopg2 \
 pygresql \
 pyopenssl
@@ -235,6 +235,10 @@ tbxsosd_debian_build() {
 tbxsosd_debian_install() {
     local pg_pwd
 
+    # Runtime data directory.
+    mkdir -p /var/cache/teambox/tbxsosd
+    chown tbxsosd.tbxsosd /var/cache/teambox/tbxsosd
+
     cd $BUILD_DIR/tbxsosd
     if ! scons --quiet install; then
         return 1;
@@ -255,10 +259,6 @@ tbxsosd_debian_install() {
     if [ $? -eq 1 ]; then
         groupadd tbxsosd
     fi
-
-    # Runtime data directory.
-    mkdir -p /var/cache/teambox/tbxsosd
-    chown tbxsosd.tbxsosd /var/cache/tbxsosd/teambox
 }
 
 kmod_debian_init() {
