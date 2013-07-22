@@ -13,12 +13,12 @@ KEY_ID=99999999
 
 PYTHON_PACKAGES="\
 beaker==1.3 \
-decorator==3.0.0 \
+decorator==3.3.1 \
 Elixir==0.6.1 \
 FormEncode==1.2.1 \
 gp.fileupload==0.8 \
 Mako==0.2.4 \
-nose==0.10.4 \
+nose==1.3.0 \
 Paste==1.7.2 \
 PasteDeploy==1.3.3 \
 PasteScript==1.7.3 \
@@ -33,7 +33,7 @@ WebError==0.10.1 \
 WebHelpers==0.6.4 \
 WebOb==0.9.6.1 \
 WebTest==1.1 \
-SQLAchemy==0.5.5 \
+SQLAlchemy==0.5.5 \
 psycopg2 \
 pygresql \
 pyopenssl
@@ -122,7 +122,7 @@ postgresql_random_password() {
 postgresql_run_all() {
     for pg in $TEAMBOX_HOME/share/teambox/db/??-*.sqlpy; do
         sudo -u postgres PYTHONPATH=$PYTHONPATH \
-            $TEAMBOX_HOME/bin/kexecpg -d --switch create $pg
+            $TEAMBOX_HOME/bin/kexecpg --switch create $pg
     done
 
     postgresql_random_password kcd kcd_pwd
@@ -336,10 +336,8 @@ kas_debian_install() {
     fi
     
     # Install the packages in the virtual environment.
-    for pkg in $PYTHON_PACKAGES; do
-        (source $TEAMBOX_HOME/share/teambox/virtualenv/bin/activate &&
-            pip install $pkg)
-    done
+    (source $TEAMBOX_HOME/share/teambox/virtualenv/bin/activate &&
+        pip install $PYTHON_PACKAGES)
 
     # PostgreSQL specific library
     mv -v $TEAMBOX_HOME/usr/lib/postgresql/9.1/lib/libkcdpg.so \
@@ -360,7 +358,8 @@ kas_debian_install() {
     update-rc.d kcd defaults
 
     # KFS directory.
-    mkdir -p /var/cache/teambox/tbxsosd
+    mkdir -p /var/cache/teambox/kfs
+    mkdir -p /var/cache/teambox/kwsfetcher
 
     # We need to run ldconfig at this point because PostgreSQL will
     # try to load libkcdpg.so, which requires libktools.
