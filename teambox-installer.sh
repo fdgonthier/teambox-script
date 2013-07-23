@@ -149,6 +149,8 @@ postgresql_run_all() {
         $TEAMBOX_HOME/etc/tbxsosd/tbxsos-xmlrpc.ini
     sed -i "s/freemium_db_pwd.*=.*/freemium_db_pwd = $freemium_pwd/g" \
         $TEAMBOX_HOME/etc/tbxsosd/tbxsos-xmlrpc.ini
+    sed -i "s/'kcd_db_pwd'.*/\'kcd_db_pwd', '$kcd_pwd'\),/g" \
+        $TEAMBOX_HOME/etc/base/master.cfg
 }
 
 configure_teambox() {
