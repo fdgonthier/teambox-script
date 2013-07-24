@@ -441,8 +441,8 @@ allSteps="init build install"
 
 #exec 2>&1 > installer.log
 
-if [ "$dist" == "debian" && ! -z "$(which killall)"]; then
-    echo "apt-get install -y psmisc"
+if [ "$dist" == "debian" -a -z "$(which killall)" ]; then
+    apt-get install -y psmisc
 fi
 
 echo "*** Killing Teambox services" >&2
