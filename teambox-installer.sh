@@ -341,6 +341,8 @@ kmod_debian_install() {
 
 kas_debian_init() {
     local pkgs="\
+apache2 \
+libapache2-mod-wsgi \
 libgnutls-dev \
 libmhash-dev \
 postgresql-server-dev-9.1 \
