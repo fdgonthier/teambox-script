@@ -106,8 +106,8 @@ pygresql \
 pyopenssl
 "
     local debian_packages="\
-python-virtualenv
-python-dev
+python-virtualenv \
+python-dev \
 postgresql-server-9.1"
 
     # Install the packages required by the Python packages.
