@@ -441,6 +441,9 @@ allSteps="init build install"
 
 #exec 2>&1 > installer.log
 
+# Make sure the package library is updated.
+apt-get update
+
 if [ "$dist" == "debian" -a -z "$(which killall)" ]; then
     apt-get install -y psmisc
 fi
