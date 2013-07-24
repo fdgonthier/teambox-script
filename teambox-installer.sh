@@ -106,6 +106,8 @@ pygresql \
 pyopenssl
 "
 
+    mkdir -p $TEAMBOX_HOME/share/teambox/
+
     # Create a Python virtual environment.
     if [ ! -d $TEAMBOX_HOME/share/teambox/virtualenv ]; then
         (cd $TEAMBOX_HOME/share/teambox/ && virtualenv virtualenv)
