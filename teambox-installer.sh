@@ -106,16 +106,24 @@ pygresql \
 pyopenssl
 "
 
+    if [ -z "$(which virtualenv)" ]; then
+        apt-get install -y python-virtualenv
+        [ $? -eq 0 ] || return 1
+    fi
+
     mkdir -p $TEAMBOX_HOME/share/teambox/
 
     # Create a Python virtual environment.
     if [ ! -d $TEAMBOX_HOME/share/teambox/virtualenv ]; then
         (cd $TEAMBOX_HOME/share/teambox/ && virtualenv virtualenv)
     fi
+    [ $? -eq 0 ] || return 1
 
     # Install the packages in the virtual environment.
     (source $TEAMBOX_HOME/share/teambox/virtualenv/bin/activate &&
-        pip install $python_packages)
+        pip install $python_packages >&2)
+
+    return 0
 }
 
 # Set the password of a PostgreSQL to a random UUID as provided
@@ -358,8 +366,7 @@ libgnutls-dev \
 libmhash-dev \
 postgresql-server-dev-9.1 \
 libjpeg62-dev \
-python-dev \
-python-virtualenv"
+python-dev"
     apt-get -y install $pkgs
     [ $? -eq 0 ] || return 1
     return 0
@@ -468,13 +475,19 @@ make_directory
 
 echo "*** Installing Python virtual environment packages (don't hold your breath)" >&2
 generate_python_virtual_env
+if [ $? -eq 1 ]; then
+    echo "FAILED" >&2
+    exit
+else
+    echo "OK" >&2
+fi
 
 for currentModule in $allModules; do
     for currentStep in $allSteps; do
         echo -n "*** Executing ${currentModule}_${dist}_${currentStep}. " >&2
         ${currentModule}_${dist}_${currentStep}
-        if [ $? == 1 ]; then
-            echo "FAILED." >&2
+        if [ $? -eq 1 ]; then
+            echo "FAILED" >&2
             exit
         else
             echo "OK" >&2
