@@ -439,7 +439,7 @@ dist="debian"
 allModules="core tbxsosd kmod kas"
 allSteps="init build install"
 
-#exec 2>&1 > installer.log
+exec 2>&1 > teambox-installer.log
 
 # Make sure the package library is updated.
 apt-get update
