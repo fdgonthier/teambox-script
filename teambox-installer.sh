@@ -504,3 +504,5 @@ run_service tbxsosd
 run_service kcd
 run_service kcdnotif
 run_service kwsfetcher
+
+echo "Please start or restart Apache immediately." >&2
