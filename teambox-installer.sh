@@ -452,7 +452,7 @@ allSteps="init build install"
 exec 2>&1 > teambox-installer.log
 
 # Make sure the package library is updated.
-echo "*** Updating package data."
+echo "*** Updating package data." >&2
 apt-get update
 
 if [ "$dist" == "debian" -a -z "$(which killall)" ]; then
