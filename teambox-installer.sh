@@ -254,11 +254,11 @@ tbxsosd_debian_install() {
 
     # User & group
     getent passwd tbxsosd > /dev/null
-    if [ $? -eq 1 ]; then
+    if [ $? -eq 2 ]; then
         useradd tbxsosd
     fi
-    getent passwd tbxsosd > /dev/null
-    if [ $? -eq 1 ]; then
+    getent group tbxsosd > /dev/null
+    if [ $? -eq 2 ]; then
         groupadd tbxsosd
     fi
 }
