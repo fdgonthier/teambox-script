@@ -105,11 +105,14 @@ psycopg2 \
 pygresql \
 pyopenssl
 "
+    local debian_packages="\
+python-virtualenv
+python-dev
+postgresql-server-9.1"
 
-    if [ -z "$(which virtualenv)" ]; then
-        apt-get install -y python-virtualenv
-        [ $? -eq 0 ] || return 1
-    fi
+    # Install the packages required by the Python packages.
+    apt-get -y install $pkgs
+    [ $? -eq 0 ] || return 1
 
     mkdir -p $TEAMBOX_HOME/share/teambox/
 
@@ -364,9 +367,7 @@ apache2 \
 libapache2-mod-wsgi \
 libgnutls-dev \
 libmhash-dev \
-postgresql-server-dev-9.1 \
-libjpeg62-dev \
-python-dev"
+libjpeg62-dev"
     apt-get -y install $pkgs
     [ $? -eq 0 ] || return 1
     return 0
@@ -451,6 +452,7 @@ allSteps="init build install"
 exec 2>&1 > teambox-installer.log
 
 # Make sure the package library is updated.
+echo "*** Updating package data."
 apt-get update
 
 if [ "$dist" == "debian" -a -z "$(which killall)" ]; then
