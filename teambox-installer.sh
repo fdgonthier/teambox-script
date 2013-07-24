@@ -9,36 +9,6 @@ BUILD_DIR=/tmp/TEAMBOX_BUILD
 ORG_NAME=teambox.co
 KEY_ID=99999999
 
-## Virtual environment packages.
-
-PYTHON_PACKAGES="\
-beaker==1.3 \
-decorator==3.3.1 \
-Elixir==0.6.1 \
-FormEncode==1.2.1 \
-gp.fileupload==0.8 \
-Mako==0.2.4 \
-nose==1.3.0 \
-Paste==1.7.2 \
-PasteDeploy==1.3.3 \
-PasteScript==1.7.3 \
-Pygments==1.0 \
-Pylons==0.9.7 \
-Routes==1.10.3 \
-setuptools==0.6c9 \
-Shabti==0.3.2b \
-simplejson==2.0.8 \
-Tempita==0.2 \
-WebError==0.10.1 \
-WebHelpers==0.6.4 \
-WebOb==0.9.6.1 \
-WebTest==1.1 \
-SQLAlchemy==0.5.5 \
-psycopg2 \
-pygresql \
-pyopenssl
-"
-
 ## UTILITY FUNCTIONS
 
 template() {
@@ -105,6 +75,45 @@ EOF
         -signkey $target_dir/$key_name \
         -out $target_dir/$cert_name
 
+}
+
+generate_python_virtual_env() {
+    local python_packages="\
+beaker==1.3 \
+decorator==3.3.1 \
+Elixir==0.6.1 \
+FormEncode==1.2.1 \
+gp.fileupload==0.8 \
+Mako==0.2.4 \
+nose==1.3.0 \
+Paste==1.7.2 \
+PasteDeploy==1.3.3 \
+PasteScript==1.7.3 \
+Pygments==1.0 \
+Pylons==0.9.7 \
+Routes==1.10.3 \
+setuptools==0.6c9 \
+Shabti==0.3.2b \
+simplejson==2.0.8 \
+Tempita==0.2 \
+WebError==0.10.1 \
+WebHelpers==0.6.4 \
+WebOb==0.9.6.1 \
+WebTest==1.1 \
+SQLAlchemy==0.5.5 \
+psycopg2 \
+pygresql \
+pyopenssl
+"
+
+    # Create a Python virtual environment.
+    if [ ! -d $TEAMBOX_HOME/share/teambox/virtualenv ]; then
+        (cd $TEAMBOX_HOME/share/teambox/ && virtualenv virtualenv)
+    fi
+
+    # Install the packages in the virtual environment.
+    (source $TEAMBOX_HOME/share/teambox/virtualenv/bin/activate &&
+        pip install $python_packages)
 }
 
 # Set the password of a PostgreSQL to a random UUID as provided
@@ -397,15 +406,6 @@ kas_debian_install() {
     scons --quiet install
     [ $? -eq 0 ] || return 1
 
-    # Create a Python virtual environment.
-    if [ ! -d $TEAMBOX_HOME/share/teambox/virtualenv ]; then
-        (cd $TEAMBOX_HOME/share/teambox/ && virtualenv virtualenv)
-    fi
-    
-    # Install the packages in the virtual environment.
-    (source $TEAMBOX_HOME/share/teambox/virtualenv/bin/activate &&
-        pip install $PYTHON_PACKAGES)
-
     # PostgreSQL specific library
     mv -v $TEAMBOX_HOME/usr/lib/postgresql/9.1/lib/libkcdpg.so \
         /usr/lib/postgresql/9.1/lib/libkcdpg.so
@@ -463,6 +463,9 @@ generate_ssl $TEAMBOX_HOME/etc/kcd/ssl \
     kcd.req kcd.key kcd.crt kcd.cnf
 
 make_directory
+
+echo "*** Installing Python virtual environment packages (don't hold your breath)" >&2
+generate_python_virtual_env
 
 for currentModule in $allModules; do
     for currentStep in $allSteps; do
