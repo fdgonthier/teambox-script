@@ -111,7 +111,7 @@ python-dev \
 postgresql-server-9.1"
 
     # Install the packages required by the Python packages.
-    apt-get -y install $pkgs
+    apt-get -y install $debian_packages
     [ $? -eq 0 ] || return 1
 
     mkdir -p $TEAMBOX_HOME/share/teambox/
