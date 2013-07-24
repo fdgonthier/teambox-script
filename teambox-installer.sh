@@ -119,12 +119,21 @@ postgresql_random_password() {
     eval "$retvar=$password"
 }
 
-postgresql_run_all() {
+password_fix_all() {
+    local kcd_pwd
+
     for pg in $TEAMBOX_HOME/share/teambox/db/??-*.sqlpy; do
         sudo -u postgres PYTHONPATH=$PYTHONPATH \
             $TEAMBOX_HOME/bin/kexecpg --switch create $pg
     done
 
+    # Change the KCD root password.
+    kcd_pwd=$(cat /proc/sys/kernel/random/uuid)
+    echo $kcd_pwd > $TEAMBOX_HOME/etc/base/admin_pwd
+    sed -i "s/'kcd_pwd'.*/'kcd_pwd', '$kcd_pwd'\),/g" \
+        $TEAMBOX_HOME/etc/base/master.cfg
+
+    # PostgreSQL database passwords
     postgresql_random_password kcd kcd_pwd
     postgresql_random_password kwmo kwmo_pwd
     postgresql_random_password freemium freemium_pwd
@@ -149,7 +158,7 @@ postgresql_run_all() {
         $TEAMBOX_HOME/etc/tbxsosd/tbxsos-xmlrpc.ini
     sed -i "s/freemium_db_pwd.*=.*/freemium_db_pwd = $freemium_pwd/g" \
         $TEAMBOX_HOME/etc/tbxsosd/tbxsos-xmlrpc.ini
-    sed -i "s/'kcd_db_pwd'.*/\'kcd_db_pwd', '$kcd_pwd'\),/g" \
+    sed -i "s/'kcd_db_pwd'.*/'kcd_db_pwd', '$kcd_pwd'\),/g" \
         $TEAMBOX_HOME/etc/base/master.cfg
 }
 
@@ -176,16 +185,28 @@ configure_teambox() {
 ## DISTRIBUTION SPECIFIC CODE
 
 core_debian_init() {
-    local pkgs="git-core build-essential scons libgcrypt11-dev flex python-psycopg2 python-pygresql"
+    local pkgs="\
+git-core \
+build-essential \
+scons \
+libgcrypt11-dev \
+flex \
+python-psycopg2 \
+python-pygresql"
     apt-get -y install $pkgs
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 core_debian_build() {
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/teambox-core/.git ]; then
         git clone https://github.com/fdgonthier/teambox-core.git
+        [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/teambox-core && git pull
+        [ $? -eq 0 ] || return 1
     fi
     cd $BUILD_DIR/teambox-core
     scons --quiet --config=force \
@@ -196,19 +217,37 @@ core_debian_build() {
         DBDIR=$TEAMBOX_HOME/share/teambox/db \
         CONFDIR=$TEAMBOX_HOME/etc \
         INCDIR=$TEAMBOX_HOME/include
-    return $?
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 core_debian_install() {
     cd $BUILD_DIR/teambox-core
-    scons --quiet install
+    if ! scons --quiet install; then
+        return 1
+    else
+        return 0;
+    fi
 }
 
 tbxsosd_debian_init() {
-    local pkgs="libldap2-dev libsasl2-dev libadns1-dev libapr1-dev libreadline6-dev libpq-dev openssl pkg-config postgresql-9.1"
+    local pkgs="\
+libldap2-dev \
+libsasl2-dev \
+libadns1-dev \
+libapr1-dev \
+libreadline6-dev \
+libpq-dev \
+openssl \
+pkg-config \
+postgresql-9.1"
     apt-get -y install $pkgs
+    [ $? -eq 0 ] || return 1
 
     mkdir -p $TEAMBOX_HOME/etc/tbxsosd
+    [ $? -eq 0 ] || return 1
+
     return 0
 }
 
@@ -217,8 +256,10 @@ tbxsosd_debian_build() {
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/tbxsosd/.git ]; then
         git clone https://github.com/fdgonthier/tbxsosd.git
+        [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/tbxsosd && git pull
+        [ $? -eq 0 ] || return 1
     fi
     cd $BUILD_DIR/tbxsosd
     scons PREFIX=$TEAMBOX_HOME --config=force \
@@ -231,7 +272,9 @@ tbxsosd_debian_build() {
         PYTHONDIR=$TEAMBOX_HOME/share/teambox/python \
         BINDIR=$TEAMBOX_HOME/bin \
         WWWDIR=$TEAMBOX_HOME/www
-    return $?
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 tbxsosd_debian_install() {
@@ -242,9 +285,8 @@ tbxsosd_debian_install() {
     chown tbxsosd.tbxsosd /var/cache/teambox/tbxsosd
 
     cd $BUILD_DIR/tbxsosd
-    if ! scons --quiet install; then
-        return 1;
-    fi
+    scons --quiet install
+    [ $? -eq 0 ] || return 1
     
     # Init file.
     # TODO: Support other init systems.
@@ -254,18 +296,19 @@ tbxsosd_debian_install() {
 
     # User & group
     getent passwd tbxsosd > /dev/null
-    if [ $? -eq 2 ]; then
-        useradd tbxsosd
-    fi
+    [ $? -eq 2 ] && useradd tbxsosd
+
     getent group tbxsosd > /dev/null
-    if [ $? -eq 2 ]; then
-        groupadd tbxsosd
-    fi
+    [ $? -eq 2 ] && groupadd tbxsosd
+
+    return 0
 }
 
 kmod_debian_init() {
     local pkgs="libsqlite3-dev"
     apt-get -y install $pkgs
+    [ $? -eq 0 ] || return 1
+    return 0
 }
 
 kmod_debian_build() {
@@ -278,8 +321,12 @@ kmod_debian_build() {
     fi    
     cd $BUILD_DIR/kmod
     scons --quiet config DESTDIR=$TEAMBOX_HOME
+    [ $? -eq 0 ] || return 1
+
     scons --quiet build
-    return $?
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 kmod_debian_install() {
@@ -287,11 +334,22 @@ kmod_debian_install() {
     
     # Kmod has no install target
     cp -v $BUILD_DIR/kmod/build/kmod/kmod $TEAMBOX_HOME/bin    
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 kas_debian_init() {
-    local pkgs="libgnutls-dev libmhash-dev postgresql-server-dev-9.1 libjpeg62-dev python-virtualenv"
+    local pkgs="\
+libgnutls-dev \
+libmhash-dev \
+postgresql-server-dev-9.1 \
+libjpeg62-dev \
+python-dev \
+python-virtualenv"
     apt-get -y install $pkgs
+    [ $? -eq 0 ] || return 1
+    return 0
 }
 
 kas_debian_build() {
@@ -299,8 +357,10 @@ kas_debian_build() {
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/kas/.git ]; then
         git clone https://github.com/fdgonthier/kas.git
+        [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/kas && git pull
+        [ $? -eq 0 ] || return 1
     fi
     cd $BUILD_DIR/kas
     scons --quiet config \
@@ -313,8 +373,12 @@ kas_debian_build() {
         WWWDIR=$TEAMBOX_HOME/www/ \
         VIRTUALENV=$TEAMBOX_HOME/share/teambox/virtualenv \
         BINDIR=bin
+    [ $? -eq 0 ] || return 1
+
     scons --quiet build 
-    return $?
+    [ $? -eq 0 ] || return 1
+
+    return 0
 }
 
 # The KAS setup has multiple different components demanding to be handled
@@ -328,9 +392,8 @@ kas_debian_build() {
 kas_debian_install() {
     cd $BUILD_DIR/kas
 
-    if ! scons --quiet install; then
-        return 1
-    fi
+    scons --quiet install
+    [ $? -eq 0 ] || return 1
 
     # Create a Python virtual environment.
     if [ ! -d $TEAMBOX_HOME/share/teambox/virtualenv ]; then
@@ -376,6 +439,10 @@ allSteps="init build install"
 
 #exec 2>&1 > installer.log
 
+if [ "$dist" == "debian" && ! -z "$(which killall)"]; then
+    echo "apt-get install -y psmisc"
+fi
+
 echo "*** Killing Teambox services" >&2
 killall tbxsosd
 killall kcd
@@ -405,7 +472,7 @@ for currentModule in $allModules; do
     done
 done
 
-postgresql_run_all
+password_fix_all
 configure_teambox
 
 run_service tbxsosd
