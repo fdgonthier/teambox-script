@@ -486,3 +486,4 @@ configure_teambox
 run_service tbxsosd
 run_service kcd
 run_service kcdnotif
+run_service kwsfetcher
