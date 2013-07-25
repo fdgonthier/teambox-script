@@ -9,6 +9,13 @@ BUILD_DIR=/tmp/TEAMBOX_BUILD
 ORG_NAME=teambox.co
 KEY_ID=99999999
 
+# GIT repository configuration
+GIT_TBXSOSD=https://github.com/tmbx/tbxsosd.git
+GIT_KAS=https://github.com/tmbx/kas.git
+GIT_TEAMBOX_CORE=https://github.com/tmbx/teambox-core.git
+GIT_KMOD=https://github.com/fdgonthier/kmod.git
+GIT_TAG=R1
+
 ## UTILITY FUNCTIONS
 
 template() {
@@ -224,7 +231,9 @@ python-pygresql"
 core_debian_build() {
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/teambox-core/.git ]; then
-        git clone https://github.com/fdgonthier/teambox-core.git
+        git clone $GIT_TEAMBOX_CORE
+        [ $? -eq 0 ] || return 1
+        cd $BUILD_DIR/teambox-core && git checkout $GIT_TAG
         [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/teambox-core && git pull
@@ -277,7 +286,9 @@ tbxsosd_debian_build() {
     # Programs
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/tbxsosd/.git ]; then
-        git clone https://github.com/fdgonthier/tbxsosd.git
+        git clone $GIT_TBXSOSD
+        [ $? -eq 0 ] || return 1
+        cd $BUILD_DIR/tbxsosd && git tag $GIT_TAG
         [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/tbxsosd && git pull
@@ -337,7 +348,10 @@ kmod_debian_build() {
     # Programs
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/kmod/.git ]; then
-        git clone https://github.com/fdgonthier/kmod.git
+        git clone $GIT_KMOD
+        [ $? -eq 0 ] || return 1
+        cd $BUILD_DIR/kmod && git checkout $GIT_TAG
+        [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/kmod && git pull
     fi    
@@ -377,7 +391,9 @@ kas_debian_build() {
     # Programs
     cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/kas/.git ]; then
-        git clone https://github.com/fdgonthier/kas.git
+        git clone $GIT_KAS
+        [ $? -eq 0 ] || return 1
+        cd $BUILD_DIR/kas && git checkout $GIT_TAG
         [ $? -eq 0 ] || return 1
     else
         cd $BUILD_DIR/kas && git pull
