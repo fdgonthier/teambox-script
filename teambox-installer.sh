@@ -1,4 +1,13 @@
 #!/bin/bash
+### BEGIN INIT INFO
+# Provides:          teambox-firstboot
+# Required-Start:    postgresql $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      
+# Short-Description: Teambox Sign-On Server Daemon
+# Description:       Teambox Sign-On Server Daemon
+### END INIT INFO
 
 TEAMBOX_HOME=/opt/teambox
 BUILD_DIR=/tmp/TEAMBOX_BUILD
@@ -10,13 +19,119 @@ ORG_NAME=teambox.co
 KEY_ID=99999999
 
 # GIT repository configuration
-GIT_TBXSOSD=https://github.com/tmbx/tbxsosd.git
-GIT_KAS=https://github.com/tmbx/kas.git
-GIT_TEAMBOX_CORE=https://github.com/tmbx/teambox-core.git
+GIT_TBXSOSD=https://github.com/fdgonthier/tbxsosd.git
+GIT_KAS=https://github.com/fdgonthier/kas.git
+GIT_TEAMBOX_CORE=https://github.com/fdgonthier/teambox-core.git
 GIT_KMOD=https://github.com/fdgonthier/kmod.git
 GIT_TAG=R1
 
+##
+##
 ## UTILITY FUNCTIONS
+##
+## The functions here should be as distribution-agnostic as possible.
+##
+
+centos_PACKAGES="\
+redhat-lsb-core \
+gcc \ 
+gcc-c++ \
+glibc-devel \
+git-all \
+scons \
+libgcrypt-devel \
+libgcrypt \
+flex \
+python-psycopg2 \
+PyGreSQL \
+openldap-devel \
+cyrus-sasl-devel \
+apr-devel \
+adns-devel \
+readline-devel \
+openssl-devel \
+pkgconfig \
+postgresql91-server \
+postgresql91-devel \
+postgresql91-libs \
+httpd \
+mod_wsgi \
+gnutls-devel \
+mhash-devel \
+libjpeg-turbo-devel \
+python-pip \
+python-devel \
+sqlite-devel"
+
+debian_PACKAGES="\
+python-virtualenv \
+python-dev \
+postgresql-server-dev-9.1 \
+psmisc \
+sudo \
+git-core \
+build-essential \
+scons \
+libgcrypt11-dev \
+flex \
+python-psycopg2 \
+python-pygresql \
+libldap2-dev \
+libsasl2-dev \
+libadns1-dev \
+libapr1-dev \
+libreadline6-dev \
+libpq-dev \
+openssl \
+pkg-config \
+postgresql-9.1 \
+libsqlite3-dev \
+apache2 \
+libapache2-mod-wsgi \
+libgnutls-dev \
+libmhash-dev \
+libjpeg62-dev"
+
+#
+# Detect the distribution.
+# Taken from: 
+#   http://www.linux-tips-and-tricks.de/index.php/latest/how-to-find-out-which-linux-distribution-a-bash-script-runs-on.html
+#
+detect_distribution() {
+    local detectedDistro="unknown"
+    local regExpLsbInfo="Description:[[:space:]]*([^ ]*)"
+    local regExpLsbFile="/etc/(.*)[-_]"
+    
+    if [ `which lsb_release 2>/dev/null` ]; then       # lsb_release available
+        lsbInfo=`lsb_release -d`
+        if [[ $lsbInfo =~ $regExpLsbInfo ]]; then
+            detectedDistro=${BASH_REMATCH[1]}
+        else
+            echo "??? Should not occur: Don't find distro name in lsb_release output ???"
+            exit 1
+        fi
+    else
+        etcFiles=`ls /etc/*[-_]{release,version} 2>/dev/null`
+        for file in $etcFiles; do
+            if [[ $file =~ $regExpLsbFile ]]; then
+                detectedDistro=${BASH_REMATCH[1]}
+                break
+            else
+                echo "??? Should not occur: Don't find any etcFiles ???"
+                exit 1
+            fi
+        done
+    fi
+    
+    detectedDistro=`echo $detectedDistro | tr "[:upper:]" "[:lower:]"`
+
+    case $detectedDistro in
+        suse)   detectedDistro="opensuse" ;;
+        linux)  detectedDistro="linuxmint" ;;
+    esac
+
+    dist=$detectedDistro
+}
 
 template() {
     local from=$1 to=$2
@@ -110,16 +225,8 @@ WebTest==1.1 \
 SQLAlchemy==0.5.5 \
 psycopg2 \
 pygresql \
-pyopenssl
+pyopenssl \
 "
-    local debian_packages="\
-python-virtualenv \
-python-dev \
-postgresql-server-dev-9.1"
-
-    # Install the packages required by the Python packages.
-    apt-get -y install $debian_packages
-    [ $? -eq 0 ] || return 1
 
     mkdir -p $TEAMBOX_HOME/share/teambox/
 
@@ -191,6 +298,9 @@ password_fix_all() {
         $TEAMBOX_HOME/etc/base/master.cfg
 }
 
+#
+# Make the essential post-installation tasks on the system.
+# 
 configure_teambox() {
     local kctl=$TEAMBOX_HOME/bin/kctl
 
@@ -211,121 +321,195 @@ configure_teambox() {
     echo "$KEY_ID=$ORG_NAME" >> $TEAMBOX_HOME/etc/kcd/kcd.ini
 }
 
+##
+##
 ## DISTRIBUTION SPECIFIC CODE
+##
+##
 
-core_debian_init() {
-    local pkgs="\
-git-core \
-build-essential \
-scons \
-libgcrypt11-dev \
-flex \
-python-psycopg2 \
-python-pygresql"
-    apt-get -y install $pkgs
-    [ $? -eq 0 ] || return 1
+#
+# Start of CentOS 6 functions
+# 
 
-    return 0
+# Do early initialization of the install. Make sure all the component.
+centos_install_packages() {
+    local arch pg_arch rpmforge_rpm_url rpmforge_rpm_file
+
+    # Initialize the service names
+    os_postgresql_service=postgresql-9.1
+    os_httpd_service=httpd
+    os_apache_dir=/etc/httpd/conf.d
+
+    # Install 2 repositories that include packages that we need that
+    # are missing from the default CentOS distribution.
+
+    arch=$(uname -m)
+    if [ "$arch" == "i686" ]; then
+        pg_arch=i386
+    else
+        pg_arch=$arch
+    fi
+
+    # Install wget since we need it now.
+    yum install -y wget
+
+    # Install the PostgreSQL RPM repository
+    pg_rpm_url="http://yum.postgresql.org/9.1/redhat/rhel-6-${pg_arch}/"
+    pg_rpm_file="pgdg-centos91-9.1-4.noarch.rpm"
+    if [ ! -e $BUILD_DIR/$pg_rpm_file ]; then
+        (cd $BUILD_DIR && wget -q $pg_rpm_url/$pg_rpm_file && rpm -i $pg_rpm_file)
+    fi
+    
+    # Install the RPM Forge repository (for ADNS)
+    rpmforge_rpm_url="http://packages.sw.be/rpmforge-release/"
+    rpmforge_rpm_file="rpmforge-release-0.5.2-2.el6.rf.${arch}.rpm"
+    rpm --import http://apt.sw.be/RPM-GPG-KEY.dag.txt
+    if [ ! -e $BUILD_DIR/$rpmforge_rpm_file ]; then
+        (cd $BUILD_DIR && wget -q $rpmforge_rpm_url/$rpmforge_rpm_file && rpm -i $rpmforge_rpm_file)
+    fi
+    
+    epel_rpm_url="http://mirrors.nl.eu.kernel.org/fedora-epel/6/${pg_arch}/"
+    epel_rpm_file="epel-release-6-8.noarch.rpm"
+    if [ ! -e $BUILD_DIR/$epel_rpm_file ]; then
+        (cd $BUILD_DIR && wget -q $epel_rpm_url/$epel_rpm_file && rpm -i $epel_rpm_file)
+    fi
+
+    # Install all the packages.
+    yum install -y $centos_PACKAGES
+
+    # Update PATH and LD_LIBRARY_PATH so that the rest of the script
+    # knows that PostgreSQL is installed.
+    export PATH=$PATH:/usr/pgsql-9.1/bin
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/pgsql-9.1/lib
+
+    # Install python-virtualenv through pip
+    pip install virtualenv
+
+    # Enable the daemons we just installed
+    if [ ! -d /var/lib/pgsql/9.1/data/base ]; then
+        service $os_postgresql_service initdb
+    fi
+
+    # Fix the PostgreSQL authentication configuration. I don't like
+    # the idea of doing that but the default authentication will
+    # always be too restrictive for this system.
+    sed -i "s/host.*all.*all.*::1\/128.*ident/host\t\tall\t\tall\t\t::1\/128\tmd5/g" \
+        /var/lib/pgsql/9.1/data/pg_hba.conf    
+
+    chkconfig $os_postgresql_service on
+    service $os_postgresql_service start
+
+    chkconfig httpd on
+    service httpd start
 }
 
-core_debian_build() {
-    cd $BUILD_DIR
+#
+# End of CentOS 6 functions.
+#
+
+#
+# Start of Debian 7 functions
+#
+
+ubuntu_install_packages() {
+    debian_install_packages
+}
+
+debian_install_packages() {
+    # Initialize the service names
+    os_postgresql_service=postgresql
+    os_httpd_service=apache2
+    os_apache_dir=/etc/apache2/conf.d
+
+    apt-get install -y $debian_PACKAGES
+}
+
+#
+# End of Debian 7 functions
+#
+
+core_build() {
     if [ ! -d $BUILD_DIR/teambox-core/.git ]; then
-        git clone $GIT_TEAMBOX_CORE
+        (cd $BUILD_DIR && git clone $GIT_TEAMBOX_CORE)
         [ $? -eq 0 ] || return 1
-        cd $BUILD_DIR/teambox-core && git checkout $GIT_TAG
-        [ $? -eq 0 ] || return 1
+        #cd $BUILD_DIR/teambox-core && git checkout $GIT_TAG
+        #[ $? -eq 0 ] || return 1
     else
-        cd $BUILD_DIR/teambox-core && git pull
+        (cd $BUILD_DIR/teambox-core && git pull)
         [ $? -eq 0 ] || return 1
     fi
-    cd $BUILD_DIR/teambox-core
-    scons --quiet --config=force \
-        PREFIX='' \
-        LIBDIR=$TEAMBOX_HOME/lib \
-        BINDIR=$TEAMBOX_HOME/bin \
-        PYTHONDIR=$TEAMBOX_HOME/share/teambox/python/ \
-        DBDIR=$TEAMBOX_HOME/share/teambox/db \
-        CONFDIR=$TEAMBOX_HOME/etc \
-        INCDIR=$TEAMBOX_HOME/include
+    (cd $BUILD_DIR/teambox-core &&
+        scons --quiet --config=force \
+            PREFIX='' \
+            LIBDIR=$TEAMBOX_HOME/lib \
+            BINDIR=$TEAMBOX_HOME/bin \
+            PYTHONDIR=$TEAMBOX_HOME/share/teambox/python/ \
+            DBDIR=$TEAMBOX_HOME/share/teambox/db \
+            CONFDIR=$TEAMBOX_HOME/etc \
+            INCDIR=$TEAMBOX_HOME/include)
     [ $? -eq 0 ] || return 1
 
     return 0
 }
 
-core_debian_install() {
-    cd $BUILD_DIR/teambox-core
-    if ! scons --quiet install; then
+core_install() {
+    if ! (cd $BUILD_DIR/teambox-core && scons --quiet install); then
         return 1
     else
         return 0;
     fi
 }
 
-tbxsosd_debian_init() {
-    local pkgs="\
-libldap2-dev \
-libsasl2-dev \
-libadns1-dev \
-libapr1-dev \
-libreadline6-dev \
-libpq-dev \
-openssl \
-pkg-config \
-postgresql-9.1"
-    apt-get -y install $pkgs
-    [ $? -eq 0 ] || return 1
-
+tbxsosd_build() {
     mkdir -p $TEAMBOX_HOME/etc/tbxsosd
     [ $? -eq 0 ] || return 1
 
-    return 0
-}
-
-tbxsosd_debian_build() {
     # Programs
-    cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/tbxsosd/.git ]; then
-        git clone $GIT_TBXSOSD
+        (cd $BUILD_DIR && git clone $GIT_TBXSOSD)
         [ $? -eq 0 ] || return 1
-        cd $BUILD_DIR/tbxsosd && git tag $GIT_TAG
-        [ $? -eq 0 ] || return 1
+        #cd $BUILD_DIR/tbxsosd && git tag $GIT_TAG
+        #[ $? -eq 0 ] || return 1
     else
-        cd $BUILD_DIR/tbxsosd && git pull
+        (cd $BUILD_DIR/tbxsosd && git pull)
         [ $? -eq 0 ] || return 1
     fi
-    cd $BUILD_DIR/tbxsosd
-    scons PREFIX=$TEAMBOX_HOME --config=force \
-        tagcrypt_libpath=$TEAMBOX_HOME/lib \
-        tagcrypt_include=$TEAMBOX_HOME/include \
-        LIBDIR=$TEAMBOX_HOME/lib \
-        INCDIR=$TEAMBOX_HOME/include \
-        CONFDIR=$TEAMBOX_HOME/etc/tbxsosd \
-        DBDIR=$TEAMBOX_HOME/share/teambox/db \
-        PYTHONDIR=$TEAMBOX_HOME/share/teambox/python \
-        BINDIR=$TEAMBOX_HOME/bin \
-        WWWDIR=$TEAMBOX_HOME/www
+    (cd $BUILD_DIR/tbxsosd &&
+        scons PREFIX=$TEAMBOX_HOME --config=force \
+            tagcrypt_libpath=$TEAMBOX_HOME/lib \
+            tagcrypt_include=$TEAMBOX_HOME/include \
+            LIBDIR=$TEAMBOX_HOME/lib \
+            INCDIR=$TEAMBOX_HOME/include \
+            CONFDIR=$TEAMBOX_HOME/etc/tbxsosd \
+            DBDIR=$TEAMBOX_HOME/share/teambox/db \
+            PYTHONDIR=$TEAMBOX_HOME/share/teambox/python \
+            BINDIR=$TEAMBOX_HOME/bin \
+            APACHEDIR=$os_apache_dir \
+            WWWDIR=$TEAMBOX_HOME/www)
     [ $? -eq 0 ] || return 1
 
     return 0
 }
 
-tbxsosd_debian_install() {
+tbxsosd_install() {
     local pg_pwd
 
     # Runtime data directory.
     mkdir -p /var/cache/teambox/tbxsosd
     chown tbxsosd.tbxsosd /var/cache/teambox/tbxsosd
 
-    cd $BUILD_DIR/tbxsosd
-    scons --quiet install
+    (cd $BUILD_DIR/tbxsosd && scons --quiet install)
     [ $? -eq 0 ] || return 1
     
     # Init file.
     # TODO: Support other init systems.
-    template init/tbxsosd /etc/init.d/tbxsosd
+    template $BUILD_DIR/tbxsosd/init/tbxsosd /etc/init.d/tbxsosd
     chmod +x /etc/init.d/tbxsosd
-    update-rc.d tbxsosd defaults
+    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+        update-rc.d tbxsosd defaults
+    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+        chkconfig --add tbxsosd
+    fi
 
     # User & group
     getent passwd tbxsosd > /dev/null
@@ -337,37 +521,26 @@ tbxsosd_debian_install() {
     return 0
 }
 
-kmod_debian_init() {
-    local pkgs="libsqlite3-dev"
-    apt-get -y install $pkgs
-    [ $? -eq 0 ] || return 1
-    return 0
-}
-
-kmod_debian_build() {
+kmod_build() {
     # Programs
-    cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/kmod/.git ]; then
-        git clone $GIT_KMOD
+        (cd $BUILD_DIR && git clone $GIT_KMOD)
         [ $? -eq 0 ] || return 1
-        cd $BUILD_DIR/kmod && git checkout $GIT_TAG
-        [ $? -eq 0 ] || return 1
+        #cd $BUILD_DIR/kmod && git checkout $GIT_TAG
+        #[ $? -eq 0 ] || return 1
     else
-        cd $BUILD_DIR/kmod && git pull
+        (cd $BUILD_DIR/kmod && git pull)
     fi    
-    cd $BUILD_DIR/kmod
-    scons --quiet config DESTDIR=$TEAMBOX_HOME
+    (cd $BUILD_DIR/kmod && scons --quiet config DESTDIR=$TEAMBOX_HOME)
     [ $? -eq 0 ] || return 1
 
-    scons --quiet build
+    (cd $BUILD_DIR/kmod && scons --quiet build)
     [ $? -eq 0 ] || return 1
 
     return 0
 }
 
-kmod_debian_install() {
-    cd $BUILD_DIR/kmod
-    
+kmod_install() {
     # Kmod has no install target
     cp -v $BUILD_DIR/kmod/build/kmod/kmod $TEAMBOX_HOME/bin    
     [ $? -eq 0 ] || return 1
@@ -375,32 +548,18 @@ kmod_debian_install() {
     return 0
 }
 
-kas_debian_init() {
-    local pkgs="\
-apache2 \
-libapache2-mod-wsgi \
-libgnutls-dev \
-libmhash-dev \
-libjpeg62-dev"
-    apt-get -y install $pkgs
-    [ $? -eq 0 ] || return 1
-    return 0
-}
-
-kas_debian_build() {
+kas_build() {
     # Programs
-    cd $BUILD_DIR
     if [ ! -d $BUILD_DIR/kas/.git ]; then
-        git clone $GIT_KAS
+        (cd $BUILD_DIR && git clone $GIT_KAS)
         [ $? -eq 0 ] || return 1
-        cd $BUILD_DIR/kas && git checkout $GIT_TAG
-        [ $? -eq 0 ] || return 1
+        #cd $BUILD_DIR/kas && git checkout $GIT_TAG
+        #[ $? -eq 0 ] || return 1
     else
-        cd $BUILD_DIR/kas && git pull
+        (cd $BUILD_DIR/kas && git pull)
         [ $? -eq 0 ] || return 1
     fi
-    cd $BUILD_DIR/kas
-    scons --quiet config \
+    (cd $BUILD_DIR/kas && scons --quiet config \
         libktools_include=$TEAMBOX_HOME/include \
         libktools_lib=$TEAMBOX_HOME/lib \
         DBDIR=$TEAMBOX_HOME/share/teambox/db \
@@ -409,10 +568,11 @@ kas_debian_build() {
         PYTHONDIR=$TEAMBOX_HOME/share/teambox/python \
         WWWDIR=$TEAMBOX_HOME/www/ \
         VIRTUALENV=$TEAMBOX_HOME/share/teambox/virtualenv \
-        BINDIR=bin
+        APACHEDIR=$os_apache_dir \
+        BINDIR=bin)
     [ $? -eq 0 ] || return 1
 
-    scons --quiet build 
+    (cd $BUILD_DIR/kas && scons --quiet build)
     [ $? -eq 0 ] || return 1
 
     return 0
@@ -426,29 +586,38 @@ kas_debian_build() {
 # - A Python virtual environment, including several Python specific packages
 #   need to be created for the web applications
 # - Several PostgreSQL databases, configured through kexecpg.
-kas_debian_install() {
-    cd $BUILD_DIR/kas
+kas_install() {
+    local pg_libdir
 
-    scons --quiet install
+    (cd $BUILD_DIR/kas && scons --quiet install)
     [ $? -eq 0 ] || return 1
 
     # PostgreSQL specific library
-    mv -v $TEAMBOX_HOME/usr/lib/postgresql/9.1/lib/libkcdpg.so \
-        /usr/lib/postgresql/9.1/lib/libkcdpg.so
-    (cd $TEAMBOX_HOME && rmdir -v /usr/lib/postgresql/9.1/lib)
+    pg_libdir=$(pg_config --pkglibdir)
+    mv -v $TEAMBOX_HOME/usr/lib/postgresql/9.1/lib/libkcdpg.so $pg_libdir
+    rmdir -v $TEAMBOX_HOME/usr/lib/postgresql/9.1/lib
+    [ $? -eq 0 ] || return 1
 
     # Init file.
-    template init/kcd.debian.init.in /etc/init.d/kcd
-    template init/kwsfetcher.debian.init.in /etc/init.d/kwsfetcher
-    template init/kcdnotif.debian.init.in /etc/init.d/kcdnotif
-    template init/kasmond.debian.init.in /etc/init.d/kasmond
+    template $BUILD_DIR/kas/init/kcd.debian.init.in /etc/init.d/kcd
+    template $BUILD_DIR/kas/init/kwsfetcher.debian.init.in /etc/init.d/kwsfetcher
+    template $BUILD_DIR/kas/init/kcdnotif.debian.init.in /etc/init.d/kcdnotif
+    template $BUILD_DIR/kas/init/kasmond.debian.init.in /etc/init.d/kasmond
 
     chmod -v +x \
         /etc/init.d/kcd \
         /etc/init.d/kwsfetcher \
         /etc/init.d/kasmond \
         /etc/init.d/kcdnotif
-    update-rc.d kcd defaults
+    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+        update-rc.d kcd defaults
+        update-rc.d kcdnotif defaults
+        update-rc.d kwsfetcher defaults
+    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+        chkconfig --add kcd
+        chkconfig --add kcdnotif
+        chkconfig --add kwsfetcher
+    fi
 
     # KFS directory.
     mkdir -p /var/cache/teambox/kfs
@@ -458,26 +627,80 @@ kas_debian_install() {
     # try to load libkcdpg.so, which requires libktools.
     ldconfig
 
+    service $os_postgresql_service restart
+
     return $?
 }
 
-dist="debian"
-allModules="core tbxsosd kmod kas"
-allSteps="init build install"
-
-exec 2>&1 > teambox-installer.log
-
-# Make sure the package library is updated.
-echo "*** Updating package data." >&2
-apt-get update
-
-if [ "$dist" == "debian" -a -z "$(which killall)" ]; then
-    apt-get install -y psmisc
+if [ $(id -u) != 0 ]; then
+    echo "Must be run as root."
+    exit 1
 fi
 
-echo "*** Killing Teambox services" >&2
-killall tbxsosd
-killall kcd
+vmmode=0
+vmfirst=0
+gittag=R1
+usehead=0
+
+firstboot='.*teambox-firstboot'
+if [[ $0 =~ $firstboot ]]; then
+    vmfirst=1
+fi
+
+ARGS=$(getopt -o vht:h -l "vm,git-tag:,use-head,help" -- "$@");
+eval set -- "$ARGS";
+
+while true; do
+    case "$1" in
+        -v|--vm)
+            shift
+            vmmode=1
+            ;;
+        -h|--use-head)
+            shift
+            usehead=0
+            ;;
+        -t|--git-tag)
+            shift
+            gittag=$1
+            ;;
+        -h|--help)
+            shift
+            echo "Teambox Installer script"
+            echo "Copyright Opersys Inc. 2013"
+            echo ""
+            echo "  --vm              VM mode install VM generating hooks"
+            echo "                    Depends on the presence of Turnkey Initthooks"
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+    esac
+done
+
+allModules="core tbxsosd kmod kas"
+allSteps="build install"
+
+#exec 2>&1 > teambox-installer.log
+
+if [ $vmfirst = 0 ]; then
+    detect_distribution
+    
+    if [ "$dist" != "debian" -a "$dist" != "ubuntu" -a "$dist" != "centos" ]; then
+        echo "Distribution $dist not supported by this installer."
+        exit 1
+    fi
+
+    make_directory
+
+    ${dist}_install_packages
+
+    echo "*** Killing Teambox services" >&2
+    killall tbxsosd
+    killall kcd
+fi
 
 # Generate SSL certificates for the sign-on service and
 # the application service. Those are self-signed and can be 
@@ -489,36 +712,70 @@ generate_ssl $TEAMBOX_HOME/etc/tbxsosd/ssl \
 generate_ssl $TEAMBOX_HOME/etc/kcd/ssl \
     kcd.req kcd.key kcd.crt kcd.cnf
 
-make_directory
+if [ $vmfirst = 0 ]; then
+    echo "*** Installing Python virtual environment packages (don't hold your breath)" >&2
+    generate_python_virtual_env
+    if [ $? -eq 1 ]; then
+        echo "FAILED" >&2
+        exit
+    else
+        echo "OK" >&2
+    fi
 
-echo "*** Installing Python virtual environment packages (don't hold your breath)" >&2
-generate_python_virtual_env
-if [ $? -eq 1 ]; then
-    echo "FAILED" >&2
-    exit
-else
-    echo "OK" >&2
+    for currentModule in $allModules; do
+        for currentStep in $allSteps; do
+            echo -n "*** Executing ${currentModule}_${currentStep}. " >&2
+            ${currentModule}_${currentStep}
+            if [ $? -eq 1 ]; then
+                echo "FAILED" >&2
+                exit
+            else
+                echo "OK" >&2
+            fi
+        done
+    done
 fi
 
-for currentModule in $allModules; do
-    for currentStep in $allSteps; do
-        echo -n "*** Executing ${currentModule}_${dist}_${currentStep}. " >&2
-        ${currentModule}_${dist}_${currentStep}
-        if [ $? -eq 1 ]; then
-            echo "FAILED" >&2
-            exit
-        else
-            echo "OK" >&2
-        fi
-    done
-done
+# Don't execute this if we are producing a VM. It will be executed at
+# first boot. In non VM mode, always execute.
+if [ $vmmode = 0 -o $vmfirst = 1 ]; then
+    password_fix_all
+    configure_teambox
+fi
 
-password_fix_all
-configure_teambox
+# Never executed except at first boot.
+if [ $vmfirst = 1 ]; then
+    # Reconfigure the SSH keys.
+    rm /etc/ssh/ssh_host_dsa_key*
+    rm /etc/ssh/ssh_host_rsa_key*
 
-run_service tbxsosd
-run_service kcd
-run_service kcdnotif
-run_service kwsfetcher
+    dpkg-reconfigure ssh
+    
+    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+        update-rc.d teambox-firstboot remove
+    else
+        chkconfig --del teambox-firstboot
+    fi
+    rm /etc/init.d/teambox-firstboot
+fi
 
-echo "Please start or restart Apache immediately." >&2
+# Install the hook for initthooks
+if [ $vmmode = 1 ]; then
+    echo $PWD
+    cp $0 /etc/init.d/teambox-firstboot
+    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+        update-rc.d teambox-firstboot start 5 2 3 4 5
+    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+        chkconfig --add teambox-firstboot
+    fi
+fi
+
+# Restart the services.
+if [ $vmmode = 0 -a $vmfirst = 0 ]; then
+    run_service tbxsosd
+    run_service kcd
+    run_service kcdnotif
+    run_service kwsfetcher
+
+    echo "Please start or restart Apache immediately." >&2
+fi
