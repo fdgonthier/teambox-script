@@ -3,6 +3,7 @@
 # Provides:          teambox-firstboot
 # Required-Start:    postgresql $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
+# X-Start-Before:    kcd kcdnotif tbxsosd kwsfetcher
 # Default-Start:     2 3 4 5
 # Default-Stop:      
 # Short-Description: Teambox Sign-On Server Daemon
@@ -98,6 +99,7 @@ libjpeg62-dev"
 #   http://www.linux-tips-and-tricks.de/index.php/latest/how-to-find-out-which-linux-distribution-a-bash-script-runs-on.html
 #
 detect_distribution() {
+    local var=$1
     local detectedDistro="unknown"
     local regExpLsbInfo="Description:[[:space:]]*([^ ]*)"
     local regExpLsbFile="/etc/(.*)[-_]"
@@ -130,14 +132,25 @@ detect_distribution() {
         linux)  detectedDistro="linuxmint" ;;
     esac
 
-    dist=$detectedDistro
+    eval "$var=$detectedDistro"
 }
 
 template() {
-    local from=$1 to=$2
+    local target=$1
+    local hostname ip addr lookup
+    ip=$(ifconfig  | grep 'inet addr:'| grep -v '127.0.0.1' | cut -d: -f2 | awk '{print $1}' | head -1)
+    
+    addr=$ip
+    if [ ! -z "$(which nslookup 2> /dev/null)" ]; then
+        lookup=$(nslookup $ip)
+        if [ $? = 0 ]; then
+            addr=$(echo $lookup | grep Name | awk '{print $2}')
+        fi
+    fi
 
-    sed -e "s|@@PREFIX@@|"${TEAMBOX_HOME}"|g" \
-        -e "s|@@HOSTNAME@@|"$(hostname --fqdn)"|g" $from > $to
+    sed -i \
+        -e "s|@@PREFIX@@|"${TEAMBOX_HOME}"|g" \
+        -e "s|@@HOSTNAME@@|$addr|g" $target
 }
 
 make_directory() {
@@ -321,6 +334,14 @@ configure_teambox() {
     echo "$KEY_ID=$ORG_NAME" >> $TEAMBOX_HOME/etc/kcd/kcd.ini
 }
 
+#
+# Fix the pending hostname in the server configuration
+#
+fix_hostnames() {
+    template /opt/teambox/etc/tbxsosd/server.conf
+    template /opt/teambox/etc/kcd/kcd.ini
+}
+
 ##
 ##
 ## DISTRIBUTION SPECIFIC CODE
@@ -487,7 +508,7 @@ tbxsosd_build() {
             APACHEDIR=$os_apache_dir \
             WWWDIR=$TEAMBOX_HOME/www)
     [ $? -eq 0 ] || return 1
-
+   
     return 0
 }
 
@@ -503,11 +524,12 @@ tbxsosd_install() {
     
     # Init file.
     # TODO: Support other init systems.
-    template $BUILD_DIR/tbxsosd/init/tbxsosd /etc/init.d/tbxsosd
+    cp $BUILD_DIR/tbxsosd/init/tbxsosd /etc/init.d/tbxsosd
+    template /etc/init.d/tbxsosd
     chmod +x /etc/init.d/tbxsosd
-    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+    if [ ! -z "$(which update-rc.d 2> /dev/null)" ]; then
         update-rc.d tbxsosd defaults
-    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+    elif [ ! -z "$(which chkconfig 2> /dev/null)" ]; then
         chkconfig --add tbxsosd
     fi
 
@@ -599,21 +621,25 @@ kas_install() {
     [ $? -eq 0 ] || return 1
 
     # Init file.
-    template $BUILD_DIR/kas/init/kcd.debian.init.in /etc/init.d/kcd
-    template $BUILD_DIR/kas/init/kwsfetcher.debian.init.in /etc/init.d/kwsfetcher
-    template $BUILD_DIR/kas/init/kcdnotif.debian.init.in /etc/init.d/kcdnotif
-    template $BUILD_DIR/kas/init/kasmond.debian.init.in /etc/init.d/kasmond
+    cp $BUILD_DIR/kas/init/kcd.debian.init.in /etc/init.d/kcd
+    template /etc/init.d/kcd
+    cp $BUILD_DIR/kas/init/kwsfetcher.debian.init.in /etc/init.d/kwsfetcher
+    template /etc/init.d/kwsfetcher
+    cp $BUILD_DIR/kas/init/kcdnotif.debian.init.in /etc/init.d/kcdnotif
+    template /etc/init.d/kcdnotif
+    cp $BUILD_DIR/kas/init/kasmond.debian.init.in /etc/init.d/kasmond
+    template /etc/init.d/kasmond
 
     chmod -v +x \
         /etc/init.d/kcd \
         /etc/init.d/kwsfetcher \
         /etc/init.d/kasmond \
         /etc/init.d/kcdnotif
-    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+    if [ ! -z "$(which update-rc.d 2> /dev/null)" ]; then
         update-rc.d kcd defaults
         update-rc.d kcdnotif defaults
         update-rc.d kwsfetcher defaults
-    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+    elif [ ! -z "$(which chkconfig 2> /dev/null)" ]; then
         chkconfig --add kcd
         chkconfig --add kcdnotif
         chkconfig --add kwsfetcher
@@ -686,7 +712,7 @@ allSteps="build install"
 #exec 2>&1 > teambox-installer.log
 
 if [ $vmfirst = 0 ]; then
-    detect_distribution
+    detect_distribution dist
     
     if [ "$dist" != "debian" -a "$dist" != "ubuntu" -a "$dist" != "centos" ]; then
         echo "Distribution $dist not supported by this installer."
@@ -741,6 +767,7 @@ fi
 if [ $vmmode = 0 -o $vmfirst = 1 ]; then
     password_fix_all
     configure_teambox
+    fix_hostnames
 fi
 
 # Never executed except at first boot.
@@ -749,9 +776,10 @@ if [ $vmfirst = 1 ]; then
     rm /etc/ssh/ssh_host_dsa_key*
     rm /etc/ssh/ssh_host_rsa_key*
 
-    dpkg-reconfigure ssh
+    ssh-keygen -q -N '' -t dsa -f /etc/ssh/ssh_host_dsa_key
+    ssh-keygen -q -N '' -t rsa -f /etc/ssh/ssh_host_rsa_key
     
-    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+    if [ ! -z "$(which update-rc.d 2> /dev/null)" ]; then
         update-rc.d teambox-firstboot remove
     else
         chkconfig --del teambox-firstboot
@@ -763,9 +791,9 @@ fi
 if [ $vmmode = 1 ]; then
     echo $PWD
     cp $0 /etc/init.d/teambox-firstboot
-    if [ ! -z "$(which update-rc.d) 2> /dev/null" ]; then
+    if [ ! -z "$(which update-rc.d 2> /dev/null)" ]; then
         update-rc.d teambox-firstboot start 5 2 3 4 5
-    elif [ ! -z "$(which chkconfig) 2> /dev/null" ]; then
+    elif [ ! -z "$(which chkconfig 2> /dev/null)" ]; then
         chkconfig --add teambox-firstboot
     fi
 fi
