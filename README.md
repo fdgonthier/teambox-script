@@ -47,13 +47,13 @@ This will give you a preview of all the commands that were executed while the sc
 
 Ubuntu is not the preferred distribution of Teambox but, starting Ubuntu 12.04, it is similar enough to Debian Wheezy to require no special handling in the script. Teambox should work as well on Ubuntu as on Debian.
 
-### CentOS: A note of caution
+## CentOS: A note of caution
 
 Even though Teambox is native of the Debian platform, supporting CentOS felt important for me due to its closeness to the RHEL commercial product which is used by many companies. CentOS is also a very stable product which is support on a long term basis.
 
 The code supporting CentOS install has not been extensively tested but I have verified that all components were properly installed and working. This software is not developped and tested for CentOS so this specfic distribution might display bug which is not present in Debian derivative distributions.
 
-#### Third party repositories
+### Third party repositories
 
 From a clean CentOS install, the following Yum repositories are added:
 
@@ -65,6 +65,6 @@ All of those repositories are installed to paliate packages required by Teambox 
 
 The script will blindly install the package whether or not the components are already present on the system. That means that it will ignore self-installed packages and self-compiled packages.
 
-## Other notes
+# Other notes
 
 - The KAS collaboration server requires access to the guts of PostgreSQL, so this will never work with MySQL. Don't ask.
