@@ -43,6 +43,12 @@ $ bash -x teambox-installer.sh > teambox-installer.log
 
 This will give you a preview of all the commands that were executed while the script is running.
 
+### Command line arguments
+
+- `--keep`: Preserves the build directory in /tmp.
+- `--use-head`: Use the tip of all the repositories instead of a specific release tag.
+- `--fdg`: Fetch the Teambox repositories from http://github.com/fdgonthier instead of http://github.com/tmbx. The repositories by yours truly might be more current than those merged in the tmbx group, but it comes at the cost of stabilitiy.
+
 ## Ubuntu
 
 Ubuntu is not the preferred distribution of Teambox but, starting Ubuntu 12.04, it is similar enough to Debian Wheezy to require no special handling in the script. Teambox should work as well on Ubuntu as on Debian.

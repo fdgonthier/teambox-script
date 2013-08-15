@@ -20,11 +20,7 @@ ORG_NAME=teambox.co
 KEY_ID=99999999
 
 # GIT repository configuration
-GIT_TBXSOSD=https://github.com/fdgonthier/tbxsosd.git
-GIT_KAS=https://github.com/fdgonthier/kas.git
-GIT_TEAMBOX_CORE=https://github.com/fdgonthier/teambox-core.git
-GIT_KMOD=https://github.com/fdgonthier/kmod.git
-GIT_TAG=R1
+GIT_DEFAULT_TAG=R2
 
 ##
 ##
@@ -450,14 +446,28 @@ debian_install_packages() {
 #
 
 core_build() {
+    local GIT_TEAMBOX_CORE
+
+    if [ $opt_fdg = 1 ]; then
+        GIT_TEAMBOX_CORE=https://github.com/fdgonthier/teambox-core.git
+    else
+        GIT_TEAMBOX_CORE=https://github.com/tmbx/teambox-core.git
+    fi
+
     if [ ! -d $BUILD_DIR/teambox-core/.git ]; then
         (cd $BUILD_DIR && git clone $GIT_TEAMBOX_CORE)
         [ $? -eq 0 ] || return 1
-        #cd $BUILD_DIR/teambox-core && git checkout $GIT_TAG
-        #[ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 0 ]; then
+            git --git-dir=$BUILD_DIR/teambox-core checkout $opt_gittag
+            [ $? -eq 0 ] || return 1
+        fi
     else
-        (cd $BUILD_DIR/teambox-core && git pull)
-        [ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 1 ]; then
+            git --git-dir=$BUILD_DIR/teambox-core checkout master
+            [ $? -eq 0 ] || return 1
+            git --git-dir=$BUILD_DIR/teambox-core pull
+            [ $? -eq 0 ] || return 1
+        fi
     fi
     (cd $BUILD_DIR/teambox-core &&
         scons --quiet --config=force \
@@ -482,18 +492,32 @@ core_install() {
 }
 
 tbxsosd_build() {
+    local GIT_TBXSOSD
+    
     mkdir -p $TEAMBOX_HOME/etc/tbxsosd
     [ $? -eq 0 ] || return 1
+
+    if [ $opt_fdg = 1 ]; then
+        GIT_TBXSOSD=https://github.com/fdgonthier/tbxsosd.git
+    else
+        GIT_TBXSOSD=https://github.com/tmbx/tbxsosd.git
+    fi
 
     # Programs
     if [ ! -d $BUILD_DIR/tbxsosd/.git ]; then
         (cd $BUILD_DIR && git clone $GIT_TBXSOSD)
         [ $? -eq 0 ] || return 1
-        #cd $BUILD_DIR/tbxsosd && git tag $GIT_TAG
-        #[ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 0 ]; then
+            git --git-dir=$BUILD_DIR/tbxsosd tag tags/$opt_gittag
+            [ $? -eq 0 ] || return 1
+        fi
     else
-        (cd $BUILD_DIR/tbxsosd && git pull)
-        [ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 1 ]; then
+            git --git-dir=$BUILD_DIR/tbxsosd checkout master
+            [ $? -eq 0 ] || return 1
+            git --git-dir=$BUILD_DIR/tbxsosd pull
+            [ $? -eq 0 ] || return 1
+        fi
     fi
     (cd $BUILD_DIR/tbxsosd &&
         scons PREFIX=$TEAMBOX_HOME --config=force \
@@ -544,14 +568,29 @@ tbxsosd_install() {
 }
 
 kmod_build() {
+    local GIT_KMOD
+
+    if [ $opt_fdg = 1 ]; then
+        GIT_KMOD=https://github.com/fdgonthier/kmod.git
+    else
+        GIT_KMOD=https://github.com/tmbx/kmod.git
+    fi
+
     # Programs
     if [ ! -d $BUILD_DIR/kmod/.git ]; then
         (cd $BUILD_DIR && git clone $GIT_KMOD)
         [ $? -eq 0 ] || return 1
-        #cd $BUILD_DIR/kmod && git checkout $GIT_TAG
-        #[ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 0 ]; then
+            git --git-dir=$BUILD_DIR/kmod checkout tags/$opt_gittag
+            [ $? -eq 0 ] || return 1
+        fi
     else
-        (cd $BUILD_DIR/kmod && git pull)
+        if [ $opt_usehead = 1 ]; then
+            git --git-dir=$BUILD_DIR/kmod checkout master
+            [ $? -eq 0 ] || return 1
+            git --git-dir=$BUILD_DIR/kmod pull
+            [ $? -eq 0 ] || return 1
+        fi
     fi    
     (cd $BUILD_DIR/kmod && scons --quiet config DESTDIR=$TEAMBOX_HOME)
     [ $? -eq 0 ] || return 1
@@ -571,15 +610,29 @@ kmod_install() {
 }
 
 kas_build() {
+    local GIT_KAS
+
+    if [ $opt_fdg = 1 ]; then
+        GIT_KAS=https://github.com/fdgonthier/kas.git
+    else
+        GIT_KAS=https://github.com/tmbx/kas.git
+    fi
+
     # Programs
     if [ ! -d $BUILD_DIR/kas/.git ]; then
         (cd $BUILD_DIR && git clone $GIT_KAS)
         [ $? -eq 0 ] || return 1
-        #cd $BUILD_DIR/kas && git checkout $GIT_TAG
-        #[ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 0 ]; then
+            git --git-dir=$BUILD_DIR/kas checkout tags/$opt_gittag
+            [ $? -eq 0 ] || return 1
+        fi
     else
-        (cd $BUILD_DIR/kas && git pull)
-        [ $? -eq 0 ] || return 1
+        if [ $opt_usehead = 1 ]; then
+            git --git-dir=$BUILD_DIR/kas checkout master
+            [ $? -eq 0 ] || return 1
+            git --git-dir=$BUILD_DIR/kas pull
+            [ $? -eq 0 ] || return 1
+        fi
     fi
     (cd $BUILD_DIR/kas && scons --quiet config \
         libktools_include=$TEAMBOX_HOME/include \
@@ -663,40 +716,61 @@ if [ $(id -u) != 0 ]; then
     exit 1
 fi
 
-vmmode=0
-vmfirst=0
-gittag=R1
-usehead=0
+opt_vmmode=0
+opt_vmfirst=0
+opt_gittag=$GIT_DEFAULT_TAG
+opt_usehead=0
+opt_keep=0
+opt_fdg=0
 
 firstboot='.*teambox-firstboot'
 if [[ $0 =~ $firstboot ]]; then
-    vmfirst=1
+    opt_vmfirst=1
 fi
 
-ARGS=$(getopt -o vht:h -l "vm,git-tag:,use-head,help" -- "$@");
+ARGS=$(getopt -o vht:hkf -l "vm,git-tag:,use-head,help,keep,fdg" -- "$@");
+[ $? = 0 ] || exit 0
 eval set -- "$ARGS";
 
 while true; do
     case "$1" in
         -v|--vm)
             shift
-            vmmode=1
+            opt_vmmode=1
             ;;
         -h|--use-head)
             shift
-            usehead=0
+            opt_usehead=0
             ;;
         -t|--git-tag)
             shift
-            gittag=$1
+            if [ -n "$1" ]; then
+                opt_gittag=$1
+                shift
+            else
+                echo "Missing argument to --git-tag."
+                exit 1
+            fi
+            ;;
+        -k|--keep)
+            shift
+            opt_keep=1
+            ;;
+        -f|--fdg)
+            shift
+            opt_fdg=1;
             ;;
         -h|--help)
             shift
             echo "Teambox Installer script"
             echo "Copyright Opersys Inc. 2013"
             echo ""
-            echo "  --vm              VM mode install VM generating hooks"
-            echo "                    Depends on the presence of Turnkey Initthooks"
+            echo "  --vm (-v)             VM mode install VM generating hooks                     "
+            echo "  --keep (-k)           Keep the build directory $BUILD_DIR after               "
+            echo "                        installation                                            "
+            echo "  --fdg (-f)            Fetch from http://github.com/fdgonthier repositories    "
+            echo "                        instead of the ordinary Teambox repositories.           "
+            echo "  --git-tag (-t) [tag]  Fetch this release tag instead of the default one.      "
             exit 0
             ;;
         --)
@@ -711,7 +785,7 @@ allSteps="build install"
 
 #exec 2>&1 > teambox-installer.log
 
-if [ $vmfirst = 0 ]; then
+if [ $opt_vmfirst = 0 ]; then
     detect_distribution dist
     
     if [ "$dist" != "debian" -a "$dist" != "ubuntu" -a "$dist" != "centos" ]; then
@@ -738,7 +812,7 @@ generate_ssl $TEAMBOX_HOME/etc/tbxsosd/ssl \
 generate_ssl $TEAMBOX_HOME/etc/kcd/ssl \
     kcd.req kcd.key kcd.crt kcd.cnf
 
-if [ $vmfirst = 0 ]; then
+if [ $opt_vmfirst = 0 ]; then
     echo "*** Installing Python virtual environment packages (don't hold your breath)" >&2
     generate_python_virtual_env
     if [ $? -eq 1 ]; then
@@ -764,14 +838,14 @@ fi
 
 # Don't execute this if we are producing a VM. It will be executed at
 # first boot. In non VM mode, always execute.
-if [ $vmmode = 0 -o $vmfirst = 1 ]; then
+if [ $opt_vmmode = 0 -o $opt_vmfirst = 1 ]; then
     password_fix_all
     configure_teambox
     fix_hostnames
 fi
 
 # Never executed except at first boot.
-if [ $vmfirst = 1 ]; then
+if [ $opt_vmfirst = 1 ]; then
     # Reconfigure the SSH keys.
     rm /etc/ssh/ssh_host_dsa_key*
     rm /etc/ssh/ssh_host_rsa_key*
@@ -788,7 +862,7 @@ if [ $vmfirst = 1 ]; then
 fi
 
 # Install the hook for initthooks
-if [ $vmmode = 1 ]; then
+if [ $opt_vmmode = 1 ]; then
     echo $PWD
     cp $0 /etc/init.d/teambox-firstboot
     if [ ! -z "$(which update-rc.d 2> /dev/null)" ]; then
@@ -799,11 +873,16 @@ if [ $vmmode = 1 ]; then
 fi
 
 # Restart the services.
-if [ $vmmode = 0 -a $vmfirst = 0 ]; then
+if [ $opt_vmmode = 0 -a $opt_vmfirst = 0 ]; then
     run_service tbxsosd
     run_service kcd
     run_service kcdnotif
     run_service kwsfetcher
 
     echo "Please start or restart Apache immediately." >&2
+fi
+
+# Erase the build directory if required.
+if [ $opt_keep = 0 ]; then
+    rm -r $BUILD_DIR
 fi
