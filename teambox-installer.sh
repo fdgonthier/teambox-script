@@ -455,17 +455,17 @@ core_build() {
     fi
 
     if [ ! -d $BUILD_DIR/teambox-core/.git ]; then
-        (cd $BUILD_DIR && git clone $GIT_TEAMBOX_CORE)
+        git clone $GIT_TEAMBOX_CORE $BUILD_DIR/teambox-core
         [ $? -eq 0 ] || return 1
         if [ $opt_usehead = 0 ]; then
-            git --git-dir=$BUILD_DIR/teambox-core checkout $opt_gittag
+            (cd $BUILD_DIR/teambox-core && git checkout $opt_gittag)
             [ $? -eq 0 ] || return 1
         fi
     else
         if [ $opt_usehead = 1 ]; then
-            git --git-dir=$BUILD_DIR/teambox-core checkout master
+            (git $BUILD_DIR/teambox-core && git checkout master)
             [ $? -eq 0 ] || return 1
-            git --git-dir=$BUILD_DIR/teambox-core pull
+            (git $BUILD_DIR/teambox-core && git pull)
             [ $? -eq 0 ] || return 1
         fi
     fi
@@ -505,17 +505,17 @@ tbxsosd_build() {
 
     # Programs
     if [ ! -d $BUILD_DIR/tbxsosd/.git ]; then
-        (cd $BUILD_DIR && git clone $GIT_TBXSOSD)
+        git clone $GIT_TBXSOSD $BUILD_DIR/tbxsosd
         [ $? -eq 0 ] || return 1
         if [ $opt_usehead = 0 ]; then
-            git --git-dir=$BUILD_DIR/tbxsosd tag tags/$opt_gittag
+            (cd $BUILD_DIR/tbxsosd && git tag tags/$opt_gittag)
             [ $? -eq 0 ] || return 1
         fi
     else
         if [ $opt_usehead = 1 ]; then
-            git --git-dir=$BUILD_DIR/tbxsosd checkout master
+            (cd $BUILD_DIR/tbxsosd && git checkout master)
             [ $? -eq 0 ] || return 1
-            git --git-dir=$BUILD_DIR/tbxsosd pull
+            (cd $BUILD_DIR/tbxsosd && git pull)
             [ $? -eq 0 ] || return 1
         fi
     fi
@@ -578,17 +578,17 @@ kmod_build() {
 
     # Programs
     if [ ! -d $BUILD_DIR/kmod/.git ]; then
-        (cd $BUILD_DIR && git clone $GIT_KMOD)
+        git clone $GIT_KMOD $BUILD_DIR/kmod
         [ $? -eq 0 ] || return 1
         if [ $opt_usehead = 0 ]; then
-            git --git-dir=$BUILD_DIR/kmod checkout tags/$opt_gittag
+            (cd $BUILD_DIR/kmod && git checkout tags/$opt_gittag)
             [ $? -eq 0 ] || return 1
         fi
     else
         if [ $opt_usehead = 1 ]; then
-            git --git-dir=$BUILD_DIR/kmod checkout master
+            (cd $BUILD_DIR/kmod && git checkout master)
             [ $? -eq 0 ] || return 1
-            git --git-dir=$BUILD_DIR/kmod pull
+            (cd $BUILD_DIR/kmod && git pull)
             [ $? -eq 0 ] || return 1
         fi
     fi    
@@ -620,17 +620,17 @@ kas_build() {
 
     # Programs
     if [ ! -d $BUILD_DIR/kas/.git ]; then
-        (cd $BUILD_DIR && git clone $GIT_KAS)
+        git clone $GIT_KAS $BUILD_DIR/kas
         [ $? -eq 0 ] || return 1
         if [ $opt_usehead = 0 ]; then
-            git --git-dir=$BUILD_DIR/kas checkout tags/$opt_gittag
+            (cd $BUILD_DIR/kas checkout tags/$opt_gittag)
             [ $? -eq 0 ] || return 1
         fi
     else
         if [ $opt_usehead = 1 ]; then
-            git --git-dir=$BUILD_DIR/kas checkout master
+            (cd $BUILD_DIR/kas && git checkout master)
             [ $? -eq 0 ] || return 1
-            git --git-dir=$BUILD_DIR/kas pull
+            (cd $BUILD_DIR/kas && git pull)
             [ $? -eq 0 ] || return 1
         fi
     fi
